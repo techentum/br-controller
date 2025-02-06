@@ -266,14 +266,23 @@ class RemoteControlApp(App):
         controls_layout.add_widget(Label())  # Bottom-right placeholder.
         main_layout.add_widget(controls_layout)
 
-        # Lower area: Direct-launch app icons.
+        # Lower area: Direct-launch app icons plus a Back button.
         apps_layout = BoxLayout(orientation='horizontal', size_hint_y=0.15)
+
+        # Add the Back button into the same row.
+        back_button = DebouncedButton(text="Back", size_hint=(None, 1), width=80)
+        back_button.bind(on_release=lambda x: self.send_keypress("Back"))
+        apps_layout.add_widget(back_button)
+
+        # Add the app icons next to the Back button.
         self.app_icons = []
         for app_id in [self.app1_id, self.app2_id, self.app3_id, self.app4_id]:
             icon = DebouncedAppIcon(app_id=app_id, remote=self)
             self.app_icons.append(icon)
             apps_layout.add_widget(icon)
+
         main_layout.add_widget(apps_layout)
+
 
         # Admin controls: initially hidden.
         self.admin_layout = BoxLayout(orientation='horizontal', size_hint_y=0.15)
