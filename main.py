@@ -27,13 +27,13 @@ import os
 import requests
 import xml.etree.ElementTree as ET
 import socket
+import sys
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
-from kivy.uix.textinput import TextInput
 from kivy.uix.label import Label
 from kivy.uix.image import Image
 
@@ -95,6 +95,74 @@ class AppIcon(ButtonBehavior, Image):
     def on_release(self):
         self.remote.launch_app(self.app_id)
 
+# ------------------------------------------------------------------------------
+# New PinPad class for on-screen PIN entry instead of a TextInput.
+# ------------------------------------------------------------------------------
+class PinPad(Popup):
+    def __init__(self, callback, **kwargs):
+        super(PinPad, self).__init__(**kwargs)
+        self.title = "Enter Admin PIN"
+        self.size_hint = (0.8, 0.8)
+        self.callback = callback
+        self.entered_pin = ""
+
+        main_layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        # Display area (shows asterisks for each entered digit)
+        self.display_label = Label(text="", font_size=32, halign="center", size_hint=(1, 0.2))
+        main_layout.add_widget(self.display_label)
+
+        # Grid of number buttons (1-9, plus Clear, 0, and Back)
+        grid = GridLayout(cols=3, spacing=10, size_hint=(1, 0.6))
+        for i in range(1, 10):
+            btn = Button(text=str(i), font_size=24)
+            btn.bind(on_release=self.on_digit_press)
+            grid.add_widget(btn)
+        clear_btn = Button(text="Clear", font_size=24)
+        clear_btn.bind(on_release=self.on_clear)
+        grid.add_widget(clear_btn)
+        zero_btn = Button(text="0", font_size=24)
+        zero_btn.bind(on_release=self.on_digit_press)
+        grid.add_widget(zero_btn)
+        back_btn = Button(text="Back", font_size=24)
+        back_btn.bind(on_release=self.on_back)
+        grid.add_widget(back_btn)
+        main_layout.add_widget(grid)
+
+        # OK and Cancel buttons at the bottom.
+        btn_layout = BoxLayout(size_hint=(1, 0.2), spacing=10)
+        ok_btn = Button(text="OK", font_size=24)
+        ok_btn.bind(on_release=self.on_ok)
+        cancel_btn = Button(text="Cancel", font_size=24)
+        cancel_btn.bind(on_release=self.dismiss)
+        btn_layout.add_widget(ok_btn)
+        btn_layout.add_widget(cancel_btn)
+        main_layout.add_widget(btn_layout)
+
+        self.content = main_layout
+
+    def on_digit_press(self, instance):
+        self.entered_pin += instance.text
+        self.update_display()
+
+    def on_clear(self, instance):
+        self.entered_pin = ""
+        self.update_display()
+
+    def on_back(self, instance):
+        self.entered_pin = self.entered_pin[:-1]
+        self.update_display()
+
+    def update_display(self):
+        self.display_label.text = "*" * len(self.entered_pin)
+
+    def on_ok(self, instance):
+        self.callback(self.entered_pin)
+        self.dismiss()
+
+# ------------------------------------------------------------------------------
+# Main Application
+# ------------------------------------------------------------------------------
 class RemoteControlApp(App):
     def get_local_ip(self):
         """Return the local IP address of the current device."""
@@ -116,7 +184,8 @@ class RemoteControlApp(App):
         self.app2_id = os.environ.get("APP2_ID", "app2")
         self.app3_id = os.environ.get("APP3_ID", "app3")
         self.app4_id = os.environ.get("APP4_ID", "app4")
-        self.admin_password = os.environ.get("ADMIN_PASSWORD", "admin")
+        # Use a numeric admin PIN for the pinpad (default is "1234")
+        self.admin_password = os.environ.get("ADMIN_PASSWORD", "1234")
 
         self.active_tv = self.tv1_ip  # Start by controlling TV01.
         self.admin_mode = False       # Admin mode is off by default.
@@ -127,30 +196,22 @@ class RemoteControlApp(App):
         # Top bar: TV selector and invisible admin login trigger.
         local_ip = self.get_local_ip()
 
-        # Create a top bar with three widgets: left button, center label, right admin button.
         top_bar = BoxLayout(size_hint_y=0.1)
-
         # Left: TV toggle button.
         self.tv_toggle_btn = Button(text="TV: 1", size_hint_x=0.2)
         self.tv_toggle_btn.bind(on_release=self.toggle_tv)
-
-        # Center: Label showing the local IP in gray text.
-        # (If you wish to show the port for the Flask server, update the text accordingly.)
+        # Center: Label showing the local IP and port.
         center_label = Label(
-            text=f"{local_ip}:5000",
-            color=(0.5, 0.5, 0.5, 1),  # Gray text.
+            text=f"{local_ip}:9000",
+            color=(0.5, 0.5, 0.5, 1),
             size_hint_x=0.6
         )
         center_label.halign = "center"
         center_label.valign = "middle"
-        # Bind the label size so that text is properly centered.
         center_label.bind(size=center_label.setter('text_size'))
-
         # Right: Invisible admin login button.
         admin_btn = Button(text="", background_color=(0, 0, 0, 0), size_hint_x=0.2)
         admin_btn.bind(on_release=self.show_admin_login)
-
-        # Add the three widgets to the top bar.
         top_bar.add_widget(self.tv_toggle_btn)
         top_bar.add_widget(center_label)
         top_bar.add_widget(admin_btn)
@@ -159,33 +220,24 @@ class RemoteControlApp(App):
         # Middle area: D-pad controls in a 3x3 grid.
         controls_layout = GridLayout(cols=3, rows=3, size_hint_y=0.6)
         controls_layout.add_widget(Label())  # Top-left placeholder.
-
         up_btn = Button(text="Up")
         up_btn.bind(on_release=lambda x: self.send_keypress("Up"))
         controls_layout.add_widget(up_btn)
-
         controls_layout.add_widget(Label())  # Top-right placeholder.
-
         left_btn = Button(text="Left")
         left_btn.bind(on_release=lambda x: self.send_keypress("Left"))
         controls_layout.add_widget(left_btn)
-
         ok_btn = Button(text="OK")
         ok_btn.bind(on_release=lambda x: self.send_keypress("Select"))
         controls_layout.add_widget(ok_btn)
-
         right_btn = Button(text="Right")
         right_btn.bind(on_release=lambda x: self.send_keypress("Right"))
         controls_layout.add_widget(right_btn)
-
         controls_layout.add_widget(Label())  # Bottom-left placeholder.
-
         down_btn = Button(text="Down")
         down_btn.bind(on_release=lambda x: self.send_keypress("Down"))
         controls_layout.add_widget(down_btn)
-
         controls_layout.add_widget(Label())  # Bottom-right placeholder.
-
         main_layout.add_widget(controls_layout)
 
         # Lower area: Direct-launch app icons.
@@ -201,28 +253,26 @@ class RemoteControlApp(App):
         self.admin_layout = BoxLayout(orientation='horizontal', size_hint_y=0.15)
         self.admin_layout.opacity = 0
         self.admin_layout.disabled = True
-
         home_btn = Button(text="Home")
         home_btn.bind(on_release=lambda x: self.send_keypress("Home"))
         self.admin_layout.add_widget(home_btn)
-
         vol_up_btn = Button(text="Volume Up")
         vol_up_btn.bind(on_release=lambda x: self.send_keypress("VolumeUp"))
         self.admin_layout.add_widget(vol_up_btn)
-
         vol_down_btn = Button(text="Volume Down")
         vol_down_btn.bind(on_release=lambda x: self.send_keypress("VolumeDown"))
         self.admin_layout.add_widget(vol_down_btn)
-
         power_btn = Button(text="Power")
         power_btn.bind(on_release=lambda x: self.send_keypress("Power"))
         self.admin_layout.add_widget(power_btn)
-        
-        # New admin button to reload the .env file.
+        # Button to reload the .env file.
         reload_btn = Button(text="Reload Env")
         reload_btn.bind(on_release=lambda x: self.reload_env())
         self.admin_layout.add_widget(reload_btn)
-        
+        # New button to exit the app.
+        exit_btn = Button(text="Exit")
+        exit_btn.bind(on_release=self.exit_app)
+        self.admin_layout.add_widget(exit_btn)
         main_layout.add_widget(self.admin_layout)
 
         return main_layout
@@ -243,32 +293,17 @@ class RemoteControlApp(App):
             icon.update_icon()
 
     def show_admin_login(self, instance):
-        """Display a popup to enter the admin password."""
-        content = BoxLayout(orientation='vertical', padding=10, spacing=10)
-        content.add_widget(Label(text="Enter Admin Password:"))
-        password_input = TextInput(password=True, multiline=False)
-        content.add_widget(password_input)
-
-        btn_layout = BoxLayout(size_hint_y=0.3, spacing=10)
-        ok_btn = Button(text="OK")
-        cancel_btn = Button(text="Cancel")
-        btn_layout.add_widget(ok_btn)
-        btn_layout.add_widget(cancel_btn)
-        content.add_widget(btn_layout)
-
-        popup = Popup(title="Admin Login", content=content, size_hint=(0.8, 0.4))
-
-        def on_ok(instance_button):
-            if password_input.text == self.admin_password:
+        """Display the PIN pad popup to enter the admin PIN."""
+        def pinpad_callback(entered_pin):
+            if entered_pin == self.admin_password:
                 self.toggle_admin_mode()
-                popup.dismiss()
             else:
-                password_input.text = ""
-                password_input.hint_text = "Incorrect, try again"
-
-        ok_btn.bind(on_release=on_ok)
-        cancel_btn.bind(on_release=lambda x: popup.dismiss())
-        popup.open()
+                error_popup = Popup(title="Error",
+                                    content=Label(text="Incorrect PIN, try again"),
+                                    size_hint=(0.6, 0.4))
+                error_popup.open()
+        pinpad = PinPad(callback=pinpad_callback)
+        pinpad.open()
 
     def toggle_admin_mode(self):
         """Toggle the visibility of admin controls."""
@@ -279,6 +314,10 @@ class RemoteControlApp(App):
         else:
             self.admin_layout.opacity = 0
             self.admin_layout.disabled = True
+
+    def exit_app(self, instance):
+        """Exit the application."""
+        App.get_running_app().stop()
 
     def reload_env(self):
         """
@@ -293,7 +332,7 @@ class RemoteControlApp(App):
         self.app2_id = os.environ.get("APP2_ID", "app2")
         self.app3_id = os.environ.get("APP3_ID", "app3")
         self.app4_id = os.environ.get("APP4_ID", "app4")
-        self.admin_password = os.environ.get("ADMIN_PASSWORD", "admin")
+        self.admin_password = os.environ.get("ADMIN_PASSWORD", "1234")
         print("Environment reloaded!")
         
         # Update the app icons with the new app IDs.
