@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+import os
+os.environ['KIVY_NO_MULTITOUCH'] = '1'  # disable simulated multitouch
 from kivy.config import Config
-
-Config.set('input', 'mouse', 'mouse,disable_multitouch')
+Config.set('input', 'mouse', '')
 
 try:
     from screeninfo import get_monitors
@@ -30,14 +31,18 @@ import requests
 import xml.etree.ElementTree as ET
 import socket
 import sys
+import time
+import threading
 
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
-from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.label import Label
 from kivy.uix.image import Image
+from kivy.uix.button import Button  # original Button imported for fallback/reference
+from kivy.uix.behaviors import ButtonBehavior
 
 from dotenv import load_dotenv, find_dotenv
 
@@ -75,16 +80,31 @@ def get_icon(app_id, roku_ip):
         print("Icon failed to save")
         return None
 
-from kivy.uix.behaviors import ButtonBehavior
+# ----------------------------------------------------------------------
+# Debounced Button Classes
+# ----------------------------------------------------------------------
+class DebouncedButton(Button):
+    debounce_interval = 0.3  # seconds
+    def __init__(self, **kwargs):
+        super(DebouncedButton, self).__init__(**kwargs)
+        self._last_release_time = 0
+    def on_release(self):
+        current_time = time.time()
+        if current_time - self._last_release_time < self.debounce_interval:
+            return  # Ignore this event if it comes too soon
+        self._last_release_time = current_time
+        super(DebouncedButton, self).on_release()
 
-class AppIcon(ButtonBehavior, Image):
+class DebouncedAppIcon(ButtonBehavior, Image):
+    debounce_interval = 0.3  # seconds
     def __init__(self, app_id, remote, **kwargs):
         kwargs.setdefault("allow_stretch", True)
         kwargs.setdefault("keep_ratio", True)
         kwargs.setdefault("size_hint", (1, 1))
-        super().__init__(**kwargs)
+        super(DebouncedAppIcon, self).__init__(**kwargs)
         self.app_id = app_id
         self.remote = remote
+        self._last_release_time = 0
         self.update_icon()
 
     def update_icon(self):
@@ -95,11 +115,15 @@ class AppIcon(ButtonBehavior, Image):
         self.reload()
 
     def on_release(self):
+        current_time = time.time()
+        if current_time - self._last_release_time < self.debounce_interval:
+            return  # Skip duplicate release events.
+        self._last_release_time = current_time
         self.remote.launch_app(self.app_id)
 
-# ------------------------------------------------------------------------------
-# New PinPad class for on-screen PIN entry instead of a TextInput.
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# PinPad class for on-screen PIN entry (with debounced buttons)
+# ----------------------------------------------------------------------
 class PinPad(Popup):
     def __init__(self, callback, **kwargs):
         super(PinPad, self).__init__(**kwargs)
@@ -117,25 +141,25 @@ class PinPad(Popup):
         # Grid of number buttons (1-9, plus Clear, 0, and Back)
         grid = GridLayout(cols=3, spacing=10, size_hint=(1, 0.6))
         for i in range(1, 10):
-            btn = Button(text=str(i), font_size=24)
+            btn = DebouncedButton(text=str(i), font_size=24)
             btn.bind(on_release=self.on_digit_press)
             grid.add_widget(btn)
-        clear_btn = Button(text="Clear", font_size=24)
+        clear_btn = DebouncedButton(text="Clear", font_size=24)
         clear_btn.bind(on_release=self.on_clear)
         grid.add_widget(clear_btn)
-        zero_btn = Button(text="0", font_size=24)
+        zero_btn = DebouncedButton(text="0", font_size=24)
         zero_btn.bind(on_release=self.on_digit_press)
         grid.add_widget(zero_btn)
-        back_btn = Button(text="Back", font_size=24)
+        back_btn = DebouncedButton(text="Back", font_size=24)
         back_btn.bind(on_release=self.on_back)
         grid.add_widget(back_btn)
         main_layout.add_widget(grid)
 
         # OK and Cancel buttons at the bottom.
         btn_layout = BoxLayout(size_hint=(1, 0.2), spacing=10)
-        ok_btn = Button(text="OK", font_size=24)
+        ok_btn = DebouncedButton(text="OK", font_size=24)
         ok_btn.bind(on_release=self.on_ok)
-        cancel_btn = Button(text="Cancel", font_size=24)
+        cancel_btn = DebouncedButton(text="Cancel", font_size=24)
         cancel_btn.bind(on_release=self.dismiss)
         btn_layout.add_widget(ok_btn)
         btn_layout.add_widget(cancel_btn)
@@ -162,9 +186,9 @@ class PinPad(Popup):
         self.callback(self.entered_pin)
         self.dismiss()
 
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Main Application
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 class RemoteControlApp(App):
     def get_local_ip(self):
         """Return the local IP address of the current device."""
@@ -200,7 +224,7 @@ class RemoteControlApp(App):
 
         top_bar = BoxLayout(size_hint_y=0.1)
         # Left: TV toggle button.
-        self.tv_toggle_btn = Button(text="TV: 1", size_hint_x=0.2)
+        self.tv_toggle_btn = DebouncedButton(text="TV: 1", size_hint_x=0.2)
         self.tv_toggle_btn.bind(on_release=self.toggle_tv)
         # Center: Label showing the local IP and port.
         center_label = Label(
@@ -212,7 +236,7 @@ class RemoteControlApp(App):
         center_label.valign = "middle"
         center_label.bind(size=center_label.setter('text_size'))
         # Right: Invisible admin login button.
-        admin_btn = Button(text="", background_color=(0, 0, 0, 0), size_hint_x=0.2)
+        admin_btn = DebouncedButton(text="", background_color=(0, 0, 0, 0), size_hint_x=0.2)
         admin_btn.bind(on_release=self.show_admin_login)
         top_bar.add_widget(self.tv_toggle_btn)
         top_bar.add_widget(center_label)
@@ -222,21 +246,21 @@ class RemoteControlApp(App):
         # Middle area: D-pad controls in a 3x3 grid.
         controls_layout = GridLayout(cols=3, rows=3, size_hint_y=0.6)
         controls_layout.add_widget(Label())  # Top-left placeholder.
-        up_btn = Button(text="Up")
+        up_btn = DebouncedButton(text="Up")
         up_btn.bind(on_release=lambda x: self.send_keypress("Up"))
         controls_layout.add_widget(up_btn)
         controls_layout.add_widget(Label())  # Top-right placeholder.
-        left_btn = Button(text="Left")
+        left_btn = DebouncedButton(text="Left")
         left_btn.bind(on_release=lambda x: self.send_keypress("Left"))
         controls_layout.add_widget(left_btn)
-        ok_btn = Button(text="OK")
+        ok_btn = DebouncedButton(text="OK")
         ok_btn.bind(on_release=lambda x: self.send_keypress("Select"))
         controls_layout.add_widget(ok_btn)
-        right_btn = Button(text="Right")
+        right_btn = DebouncedButton(text="Right")
         right_btn.bind(on_release=lambda x: self.send_keypress("Right"))
         controls_layout.add_widget(right_btn)
         controls_layout.add_widget(Label())  # Bottom-left placeholder.
-        down_btn = Button(text="Down")
+        down_btn = DebouncedButton(text="Down")
         down_btn.bind(on_release=lambda x: self.send_keypress("Down"))
         controls_layout.add_widget(down_btn)
         controls_layout.add_widget(Label())  # Bottom-right placeholder.
@@ -246,7 +270,7 @@ class RemoteControlApp(App):
         apps_layout = BoxLayout(orientation='horizontal', size_hint_y=0.15)
         self.app_icons = []
         for app_id in [self.app1_id, self.app2_id, self.app3_id, self.app4_id]:
-            icon = AppIcon(app_id=app_id, remote=self)
+            icon = DebouncedAppIcon(app_id=app_id, remote=self)
             self.app_icons.append(icon)
             apps_layout.add_widget(icon)
         main_layout.add_widget(apps_layout)
@@ -255,24 +279,24 @@ class RemoteControlApp(App):
         self.admin_layout = BoxLayout(orientation='horizontal', size_hint_y=0.15)
         self.admin_layout.opacity = 0
         self.admin_layout.disabled = True
-        home_btn = Button(text="Home")
+        home_btn = DebouncedButton(text="Home")
         home_btn.bind(on_release=lambda x: self.send_keypress("Home"))
         self.admin_layout.add_widget(home_btn)
-        vol_up_btn = Button(text="Volume Up")
+        vol_up_btn = DebouncedButton(text="Volume Up")
         vol_up_btn.bind(on_release=lambda x: self.send_keypress("VolumeUp"))
         self.admin_layout.add_widget(vol_up_btn)
-        vol_down_btn = Button(text="Volume Down")
+        vol_down_btn = DebouncedButton(text="Volume Down")
         vol_down_btn.bind(on_release=lambda x: self.send_keypress("VolumeDown"))
         self.admin_layout.add_widget(vol_down_btn)
-        power_btn = Button(text="Power")
+        power_btn = DebouncedButton(text="Power")
         power_btn.bind(on_release=lambda x: self.send_keypress("Power"))
         self.admin_layout.add_widget(power_btn)
         # Button to reload the .env file.
-        reload_btn = Button(text="Reload Env")
+        reload_btn = DebouncedButton(text="Reload Env")
         reload_btn.bind(on_release=lambda x: self.reload_env())
         self.admin_layout.add_widget(reload_btn)
         # New button to exit the app.
-        exit_btn = Button(text="Exit")
+        exit_btn = DebouncedButton(text="Exit")
         exit_btn.bind(on_release=self.exit_app)
         self.admin_layout.add_widget(exit_btn)
         main_layout.add_widget(self.admin_layout)
@@ -305,7 +329,8 @@ class RemoteControlApp(App):
                                     size_hint=(0.6, 0.4))
                 error_popup.open()
         pinpad = PinPad(callback=pinpad_callback)
-        pinpad.open()
+        # Delay opening the popup to avoid event leakage.
+        Clock.schedule_once(lambda dt: pinpad.open(), 0.05)
 
     def toggle_admin_mode(self):
         """Toggle the visibility of admin controls."""
@@ -377,17 +402,15 @@ class RemoteControlApp(App):
             print(f"Error launching app '{app_id}': {e}")
 
 if __name__ == '__main__':
+    # Start the Flask app from admin.py in a separate thread.
     from admin import app as flask_app
-    import threading
 
-    # Define a function to run the Flask app.
     def run_flask():
         flask_app.run(debug=True, use_reloader=False, host="0.0.0.0", port=9000)
 
-    # Start Flask in a separate thread.
     flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True  # The thread will exit when the main thread exits.
+    flask_thread.daemon = True  # This thread will exit when the main thread exits.
     flask_thread.start()
 
-    # Now run the Kivy app in the main thread.
+    # Now run the Kivy app.
     RemoteControlApp().run()
