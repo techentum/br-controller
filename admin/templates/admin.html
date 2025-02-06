@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Admin Configuration</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap CSS from CDN -->
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <style>
+    /* Adjust the sidebar height as needed.
+       Here, 100px is subtracted from the full viewport height to account for the navbar and top margins. */
+    .sidebar {
+      height: calc(100vh - 100px);
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <a class="navbar-brand" href="#">Breakroom TV Admin</a>
+    <div class="collapse navbar-collapse">
+      <ul class="navbar-nav ml-auto">
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+  <div class="container-fluid mt-4">
+    <div class="row">
+      <!-- Sidebar: Installed Apps -->
+      <div class="col-md-3">
+        <div class="sidebar">
+          <div class="card mb-3">
+            <div class="card-header bg-dark text-white">
+              Available Apps
+            </div>
+            <div class="card-body p-0">
+              <table class="table table-striped mb-0">
+                <thead>
+                  <tr>
+                    <th scope="col">App ID</th>
+                    <th scope="col">Name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for app in apps %}
+                    <tr>
+                      <td>{{ app.id }}</td>
+                      <td>{{ app.name }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Main Content -->
+      <div class="col-md-9">
+        <h1 class="mb-4">Admin</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        
+        <!-- Active Apps Cards -->
+        <div class="row mb-4">
+          <div class="col-md-6">
+            <div class="card mb-3">
+              <div class="card-header">TV 1 ({{ tv1_ip }})</div>
+              <div class="card-body">
+                <p class="card-text">Active App: <strong>{{ active_app_tv1 }}</strong></p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-3">
+              <div class="card-header">TV 2 ({{ tv2_ip }})</div>
+              <div class="card-body">
+                <p class="card-text">Active App: <strong>{{ active_app_tv2 }}</strong></p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Configuration Form -->
+        <form method="post">
+          <div class="form-row">
+            <div class="form-group col-md-6">
+              <label for="TV01_IP">TV01_IP</label>
+              <input type="text" class="form-control" id="TV01_IP" name="TV01_IP" value="{{ config.TV01_IP }}" required>
+            </div>
+            <div class="form-group col-md-6">
+              <label for="TV02_IP">TV02_IP</label>
+              <input type="text" class="form-control" id="TV02_IP" name="TV02_IP" value="{{ config.TV02_IP }}" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group col-md-6">
+              <label for="APP1_ID">APP1_ID</label>
+              <input type="text" class="form-control" id="APP1_ID" name="APP1_ID" value="{{ config.APP1_ID }}" required>
+            </div>
+            <div class="form-group col-md-6">
+              <label for="APP2_ID">APP2_ID</label>
+              <input type="text" class="form-control" id="APP2_ID" name="APP2_ID" value="{{ config.APP2_ID }}" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group col-md-6">
+              <label for="APP3_ID">APP3_ID</label>
+              <input type="text" class="form-control" id="APP3_ID" name="APP3_ID" value="{{ config.APP3_ID }}" required>
+            </div>
+            <div class="form-group col-md-6">
+              <label for="APP4_ID">APP4_ID</label>
+              <input type="text" class="form-control" id="APP4_ID" name="APP4_ID" value="{{ config.APP4_ID }}" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="ADMIN_PASSWORD">ADMIN_PASSWORD</label>
+            <input type="text" class="form-control" id="ADMIN_PASSWORD" name="ADMIN_PASSWORD" value="{{ config.ADMIN_PASSWORD }}" required>
+          </div>
+          <button type="submit" class="btn btn-success">Update Configuration</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Bootstrap JS and dependencies from CDN -->
+  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
