@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 from kivy.config import Config
 
-from kivy.core.window import Window
-Window.show_cursor = False
-
-Config.set('input', 'mouse', 'mouse,disable_multitouch')
-
-
 try:
     from screeninfo import get_monitors
     monitors = get_monitors()
