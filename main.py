@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from kivy.config import Config
 
 try:
@@ -38,12 +39,13 @@ from kivy.uix.image import Image
 
 from dotenv import load_dotenv, find_dotenv
 
+# Load the .env file.
 dotenv_path = find_dotenv()
 print("Found .env file at:", dotenv_path)
 load_dotenv(override=True)
 
-# Directory to store icon images; you can set ICON_DIR via an environment variable if you like.
-ICON_DIR = os.environ.get("ICON_DIR", "icons")
+# Use a directory inside the user’s home directory to store icons.
+ICON_DIR = os.environ.get("ICON_DIR", os.path.join(os.path.expanduser("~"), "remote_control_icons"))
 if not os.path.exists(ICON_DIR):
     os.makedirs(ICON_DIR)
 
@@ -125,7 +127,7 @@ class RemoteControlApp(App):
         # Top bar: TV selector and invisible admin login trigger.
         local_ip = self.get_local_ip()
 
-                # Create a top bar with three widgets: left button, center label, right admin button.
+        # Create a top bar with three widgets: left button, center label, right admin button.
         top_bar = BoxLayout(size_hint_y=0.1)
 
         # Left: TV toggle button.
@@ -133,6 +135,7 @@ class RemoteControlApp(App):
         self.tv_toggle_btn.bind(on_release=self.toggle_tv)
 
         # Center: Label showing the local IP in gray text.
+        # (If you wish to show the port for the Flask server, update the text accordingly.)
         center_label = Label(
             text=f"{local_ip}:5000",
             color=(0.5, 0.5, 0.5, 1),  # Gray text.
@@ -338,12 +341,11 @@ if __name__ == '__main__':
 
     # Define a function to run the Flask app.
     def run_flask():
-        flask_app.run(debug=True, use_reloader=False, host="0.0.0.0", port=5000)
-
+        flask_app.run(debug=True, use_reloader=False, host="0.0.0.0", port=9000)
 
     # Start Flask in a separate thread.
     flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True  # Optional: so the thread exits when the main thread exits
+    flask_thread.daemon = True  # The thread will exit when the main thread exits.
     flask_thread.start()
 
     # Now run the Kivy app in the main thread.
