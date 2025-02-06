@@ -2,7 +2,7 @@
 import os
 os.environ['KIVY_NO_MULTITOUCH'] = '1'  # disable simulated multitouch
 from kivy.config import Config
-Config.set('input', 'mouse', 'mouse,disable_multitouch')
+Config.set('input', 'mouse', '')
 
 try:
     from screeninfo import get_monitors
