@@ -15,8 +15,8 @@ Kivy==2.3.1
 Kivy-Garden==0.1.5
 MarkupSafe==3.0.2
 Pygments==2.19.1
-pyobjc-core==11.0
-pyobjc-framework-Cocoa==11.0
+pyobjc-core==11.0; sys_platform == 'darwin'
+pyobjc-framework-Cocoa==11.0; sys_platform == 'darwin'
 python-dotenv==1.0.1
 requests==2.32.3
 screeninfo==0.8.1
